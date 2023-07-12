@@ -27,6 +27,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
+
     - name: Update notes
       run: |
         NEW_NOTES=$(gh api --method POST -H "Accept: application/vnd.github+json"  /repos/frappe/frappe/releases/generate-notes  -f tag_name=$RELEASE_TAG | jq -r '.body' | sed  -E '/^\* (chore|ci|test|docs|style)/d' )
