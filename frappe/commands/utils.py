@@ -253,10 +253,9 @@ def execute(context, method, args=None, kwargs=None, profile=False):
 
 			try:
 				ret = frappe.get_attr(method)(*args, **kwargs)
-			except Exception:
-				ret = frappe.safe_eval(
-					method + "(*args, **kwargs)", eval_globals=globals(), eval_locals=locals()
-				)
+			except ModuleNotFoundError:
+				# This could be frappe.{local}
+				ret = _attempt_loading_local_method(method)(*args, **kwargs)
 
 			if profile:
 				import pstats
@@ -278,6 +277,27 @@ def execute(context, method, args=None, kwargs=None, profile=False):
 
 	if not context.sites:
 		raise SiteNotSpecifiedError
+
+
+def _attempt_loading_local_method(method):
+	"""Attempt to resolve dotted string containing attributes defined at runtime.
+
+	Example:
+	frappe.db.method can not be found by python import system because `db` is defined at runtime
+	so `frappe.db` is not really a module.
+
+	This function attempts to iteratively try and local the function/method by accessing one part
+	of dotted string at a time.
+	"""
+	parts = method.split(".")
+	local = ".".join(parts[:2])
+	local = frappe.get_attr(local)
+
+	local_method = local
+	for local_method_part in parts[2:]:
+		local_method = getattr(local_method, local_method_part)
+
+	return local_method
 
 
 @click.command("add-to-email-queue")
