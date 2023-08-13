@@ -1,3 +1,4 @@
+import ast
 import copy
 import inspect
 import json
@@ -8,7 +9,7 @@ from functools import lru_cache
 
 import RestrictedPython.Guards
 from RestrictedPython import compile_restricted, safe_globals
-from RestrictedPython.transformer import RestrictingNodeTransformer
+from RestrictedPython.transformer import RestrictingNodeTransformer, copy_locations
 
 import frappe
 import frappe.exceptions
@@ -55,6 +56,20 @@ class FrappeTransformer(RestrictingNodeTransformer):
 			return
 
 		return super().check_name(node, name, *args, **kwargs)
+
+	def visit_Call(self, node):
+		if isinstance(node.func, ast.Name):
+			if node.func.id == "exec":
+				self.error(node, "Exec calls are not allowed.")
+			elif node.func.id == "eval":
+				self.error(node, "Eval calls are not allowed.")
+
+		node = self.node_contents_visit(node)
+
+		node.args.insert(0, node.func)
+		node.func = ast.Name("_apply_", ast.Load())
+		copy_locations(node.func, node.args[0])
+		return node
 
 
 def safe_exec(script, _globals=None, _locals=None, restrict_commit_rollback=False):
@@ -246,6 +261,7 @@ def get_safe_globals():
 	# default writer allows write access
 	out._write_ = _write
 	out._getitem_ = _getitem
+	out._apply_ = _apply
 	out._getattr_ = _getattr_for_safe_exec
 
 	# allow iterators and list comprehension
@@ -460,6 +476,13 @@ def _write(obj):
 	return obj
 
 
+def _apply(func, *args, **kwargs):
+	for arg_value in list(args) + list(kwargs.values()):
+		if isinstance(arg_value, str) and arg_value.startswith("__") and arg_value.endswith("__"):
+			raise SyntaxError(f'"{arg_value}" is not allowed because it ' 'starts with "__"')
+	return func(*args, **kwargs)
+
+
 def add_data_utils(data):
 	for key, obj in frappe.utils.data.__dict__.items():
 		if key in VALID_UTILS:
@@ -598,5 +621,6 @@ WHITELISTED_SAFE_EVAL_GLOBALS = {
 	"_getattr_": _get_attr_for_eval,
 	"_getitem_": _getitem,
 	"_getiter_": iter,
+	"_apply_": _apply,
 	"_iter_unpack_sequence_": RestrictedPython.Guards.guarded_iter_unpack_sequence,
 }

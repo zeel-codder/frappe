@@ -105,3 +105,7 @@ class TestSafeExec(FrappeTestCase):
 
 		# RestrictedPython
 		safe_exec("my_dict = _dict()")
+
+	def test_no_dunder_anywhere(self):
+		code = """[].append("__secret__") """
+		self.assertRaises(Exception, safe_exec, code)
