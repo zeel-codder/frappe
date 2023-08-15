@@ -490,10 +490,33 @@ def _write(obj):
 
 
 def _apply(func, *args, **kwargs):
+	check_safe(func)
 	for arg_value in list(args) + list(kwargs.values()):
 		if isinstance(arg_value, str) and arg_value.startswith("__") and arg_value.endswith("__"):
 			raise SyntaxError(f'"{arg_value}" is not allowed because it ' 'starts with "__"')
 	return func(*args, **kwargs)
+
+
+def check_safe(func):
+	if not isinstance(func, types.FunctionType):
+		return
+
+	if inspect.getfile(func) == "<serverscript>":
+		# User created function
+		return
+
+	whitelisted_funcs = []
+
+	def _flatten_namespace(ns):
+		for obj in ns.values():
+			if isinstance(obj, dict):
+				_flatten_namespace(obj)
+			else:
+				whitelisted_funcs.append(obj)
+		return whitelisted_funcs
+
+	if func not in _flatten_namespace(get_safe_globals()):
+		raise SyntaxError(f"{func} is not whitelisted")
 
 
 def add_data_utils(data):
