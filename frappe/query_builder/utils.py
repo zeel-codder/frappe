@@ -114,7 +114,7 @@ def patch_query_execute():
 
 			if not check_safe_sql_query(query, throw=False):
 				callstack = inspect.stack()
-				if len(callstack) >= 3 and ".py" in callstack[2].filename:
+				if len(callstack) >= 4 and ".py" in callstack[3].filename:
 					# ignore any query builder methods called from python files
 					# assumption is that those functions are whitelisted already.
 
