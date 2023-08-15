@@ -109,3 +109,10 @@ class TestSafeExec(FrappeTestCase):
 	def test_no_dunder_anywhere(self):
 		code = """[].append("__secret__") """
 		self.assertRaises(Exception, safe_exec, code)
+
+	def test_write_wrapper(self):
+		# Allow modifying _dict instance
+		safe_exec("_dict().x = 1")
+
+		# dont Allow modifying _dict class
+		self.assertRaises(Exception, safe_exec, "_dict.x = 1")
