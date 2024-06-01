@@ -98,11 +98,47 @@ class TestDocument(FrappeTestCase):
 
 		self.assertEqual(frappe.db.get_value(d.doctype, d.name, "subject"), "subject changed")
 
+	def test_discard_transitions(self):
+		d = self.test_insert()
+		self.assertEqual(d.docstatus, 0)
+
+		# invalid: Submit > Discard, Cancel > Discard
+		d.submit()
+		self.assertRaises(frappe.ValidationError, d.discard)
+		d.reload()
+
+		d.cancel()
+		self.assertRaises(frappe.ValidationError, d.discard)
+
+		# valid: Draft > Discard
+		d2 = self.test_insert()
+		d2.discard()
+		self.assertEqual(d2.docstatus, 2)
+
+	def test_save_on_discard_throws(self):
+		from frappe.desk.doctype.event.event import Event
+
+		d3 = self.test_insert()
+
+		def test_on_discard(d3):
+			d3.subject = d3.subject + "update"
+			d3.save()
+
+		d3.on_discard = (test_on_discard)(d3)
+		d3.on_discard = test_on_discard.__get__(d3, Event)
+
+		self.assertRaises(frappe.ValidationError, d3.discard)
+
 	def test_value_changed(self):
 		d = self.test_insert()
 		d.subject = "subject changed again"
-		d.save()
+		d.load_doc_before_save()
+		d.update_modified()
+
 		self.assertTrue(d.has_value_changed("subject"))
+		self.assertTrue(d.has_value_changed("modified"))
+
+		self.assertFalse(d.has_value_changed("creation"))
 		self.assertFalse(d.has_value_changed("event_type"))
 
 	def test_mandatory(self):
@@ -123,9 +159,7 @@ class TestDocument(FrappeTestCase):
 
 	def test_text_editor_field(self):
 		try:
-			frappe.get_doc(
-				doctype="Activity Log", subject="test", message='<img src="test.png" />'
-			).insert()
+			frappe.get_doc(doctype="Activity Log", subject="test", message='<img src="test.png" />').insert()
 		except frappe.MandatoryError:
 			self.fail("Text Editor false positive mandatory error")
 
@@ -329,7 +363,9 @@ class TestDocument(FrappeTestCase):
 		@contextmanager
 		def customize_note(with_options=False):
 			options = (
-				"frappe.utils.now_datetime() - frappe.utils.get_datetime(doc.creation)" if with_options else ""
+				"frappe.utils.now_datetime() - frappe.utils.get_datetime(doc.creation)"
+				if with_options
+				else ""
 			)
 			custom_field = frappe.get_doc(
 				{

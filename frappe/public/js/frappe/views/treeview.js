@@ -180,13 +180,8 @@ frappe.views.TreeView = class TreeView {
 			args: me.args,
 			callback: function (r) {
 				if (r.message) {
-					if (r.message.length > 1) {
-						me.root_label = me.doctype;
-						me.root_value = "";
-					} else {
-						me.root_label = r.message[0]["value"];
-						me.root_value = me.root_label;
-					}
+					me.root_label = me.doctype;
+					me.root_value = "";
 					me.make_tree();
 				}
 			},
@@ -200,9 +195,13 @@ frappe.views.TreeView = class TreeView {
 		if (use_value == null) {
 			use_value = use_label;
 		}
-		this.args["include_disabled"] = this.page.inner_toolbar
-			.find("input[type='checkbox']")
-			.prop("checked");
+
+		if (this.page?.inner_toolbar) {
+			this.args["include_disabled"] = this.page.inner_toolbar
+				.find("input[type='checkbox']")
+				.prop("checked");
+		}
+
 		this.tree = new frappe.ui.Tree({
 			parent: this.body,
 			label: use_label,
@@ -348,7 +347,8 @@ frappe.views.TreeView = class TreeView {
 		});
 
 		var args = $.extend({}, me.args);
-		args["parent_" + me.doctype.toLowerCase().replace(/ /g, "_")] = me.args["parent"];
+		args["parent_" + me.doctype.toLowerCase().replace(/ /g, "_").replace(/-/g, "_")] =
+			me.args["parent"];
 
 		d.set_value("is_group", 0);
 		d.set_values(args);

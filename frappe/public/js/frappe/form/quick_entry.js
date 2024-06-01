@@ -61,7 +61,12 @@ frappe.ui.form.QuickEntryForm = class QuickEntryForm {
 		let fields = this.meta.fields;
 
 		this.mandatory = fields.filter((df) => {
-			return (df.reqd || df.allow_in_quick_entry) && !df.read_only && !df.is_virtual;
+			return (
+				(df.reqd || df.allow_in_quick_entry) &&
+				!df.read_only &&
+				!df.is_virtual &&
+				df.fieldtype !== "Tab Break"
+			);
 		});
 	}
 
@@ -186,7 +191,10 @@ frappe.ui.form.QuickEntryForm = class QuickEntryForm {
 					doc: me.dialog.doc,
 				},
 				callback: function (r) {
-					if (frappe.model.is_submittable(me.doctype)) {
+					if (
+						frappe.model.is_submittable(me.doctype) &&
+						!frappe.model.has_workflow(me.doctype)
+					) {
 						frappe.run_serially([
 							() => (me.dialog.working = true),
 							() => {

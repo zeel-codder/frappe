@@ -49,7 +49,7 @@ class DBTable:
 		pass
 
 	def get_column_definitions(self):
-		column_list = [] + frappe.db.DEFAULT_COLUMNS
+		column_list = [*frappe.db.DEFAULT_COLUMNS]
 		ret = []
 		for k in list(self.columns):
 			if k not in column_list:
@@ -126,7 +126,6 @@ class DBTable:
 				)
 
 			if "varchar" in frappe.db.type_map.get(col.fieldtype, ()):
-
 				# validate length range
 				new_length = cint(col.length) or cint(frappe.db.VARCHAR_LEN)
 				if not (1 <= new_length <= 1000):
@@ -145,9 +144,7 @@ class DBTable:
 					try:
 						# check for truncation
 						max_length = frappe.db.sql(
-							"""SELECT MAX(CHAR_LENGTH(`{fieldname}`)) FROM `tab{doctype}`""".format(
-								fieldname=col.fieldname, doctype=self.doctype
-							)
+							f"""SELECT MAX(CHAR_LENGTH(`{col.fieldname}`)) FROM `tab{self.doctype}`"""
 						)
 
 					except frappe.db.InternalError as e:
@@ -203,7 +200,12 @@ class DbColumn:
 		self.not_nullable = not_nullable
 
 	def get_definition(self, for_modification=False):
-		column_def = get_definition(self.fieldtype, precision=self.precision, length=self.length)
+		column_def = get_definition(
+			self.fieldtype,
+			precision=self.precision,
+			length=self.length,
+			options=self.options,
+		)
 
 		if not column_def:
 			return column_def
@@ -359,8 +361,19 @@ def validate_column_length(fieldname):
 		frappe.throw(_("Fieldname is limited to 64 characters ({0})").format(fieldname))
 
 
-def get_definition(fieldtype, precision=None, length=None):
+def get_definition(fieldtype, precision=None, length=None, *, options=None):
 	d = frappe.db.type_map.get(fieldtype)
+
+	if (
+		fieldtype == "Link"
+		and options
+		# XXX: This might not trigger if referred doctype is not yet created
+		# This is largely limitation of how migration happens though.
+		# Maybe we can sort by creation and then modified?
+		and frappe.db.exists("DocType", options)
+		and frappe.get_meta(options).autoname == "UUID"
+	):
+		d = ("uuid", None)
 
 	if not d:
 		return
@@ -393,16 +406,9 @@ def get_definition(fieldtype, precision=None, length=None):
 	return coltype
 
 
-def add_column(
-	doctype, column_name, fieldtype, precision=None, length=None, default=None, not_null=False
-):
-	if column_name in frappe.db.get_table_columns(doctype):
-		# already exists
-		return
-
+def add_column(doctype, column_name, fieldtype, precision=None, length=None, default=None, not_null=False):
 	frappe.db.commit()
-
-	query = "alter table `tab{}` add column {} {}".format(
+	query = "alter table `tab{}` add column if not exists {} {}".format(
 		doctype,
 		column_name,
 		get_definition(fieldtype, precision, length),

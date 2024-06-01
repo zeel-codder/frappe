@@ -22,7 +22,7 @@ import frappe.rate_limiter
 import frappe.recorder
 import frappe.utils.response
 from frappe import _
-from frappe.auth import SAFE_HTTP_METHODS, UNSAFE_HTTP_METHODS, HTTPRequest, validate_auth  # noqa
+from frappe.auth import SAFE_HTTP_METHODS, UNSAFE_HTTP_METHODS, HTTPRequest, validate_auth
 from frappe.middlewares import StaticDataMiddleware
 from frappe.utils import CallbackManager, cint, get_site_name
 from frappe.utils.data import escape_html
@@ -36,7 +36,12 @@ _sites_path = os.environ.get("SITES_PATH", ".")
 
 # If gc.freeze is done then importing modules before forking allows us to share the memory
 if frappe._tune_gc:
+	import gettext
+
+	import babel
+	import babel.messages
 	import bleach
+	import num2words
 	import pydantic
 
 	import frappe.boot
@@ -272,9 +277,7 @@ def set_cors_headers(response):
 
 	# only required for preflight requests
 	if request.method == "OPTIONS":
-		cors_headers["Access-Control-Allow-Methods"] = request.headers.get(
-			"Access-Control-Request-Method"
-		)
+		cors_headers["Access-Control-Allow-Methods"] = request.headers.get("Access-Control-Request-Method")
 
 		if allowed_headers := request.headers.get("Access-Control-Request-Headers"):
 			cors_headers["Access-Control-Allow-Headers"] = allowed_headers
@@ -297,13 +300,14 @@ def make_form_dict(request: Request):
 		args.update(request.args or {})
 		args.update(request.form or {})
 
-	if not isinstance(args, dict):
+	if isinstance(args, dict):
+		frappe.local.form_dict = frappe._dict(args)
+		# _ is passed by $.ajax so that the request is not cached by the browser. So, remove _ from form_dict
+		frappe.local.form_dict.pop("_", None)
+	elif isinstance(args, list):
+		frappe.local.form_dict["data"] = args
+	else:
 		frappe.throw(_("Invalid request arguments"))
-
-	frappe.local.form_dict = frappe._dict(args)
-
-	# _ is passed by $.ajax so that the request is not cached by the browser. So, remove _ from form_dict
-	frappe.local.form_dict.pop("_", None)
 
 
 def handle_exception(e):
@@ -400,11 +404,7 @@ def handle_exception(e):
 
 def sync_database(rollback: bool) -> bool:
 	# if HTTP method would change server state, commit if necessary
-	if (
-		frappe.db
-		and (frappe.local.flags.commit or frappe.local.request.method in UNSAFE_HTTP_METHODS)
-		and frappe.db.transaction_writes
-	):
+	if frappe.db and (frappe.local.flags.commit or frappe.local.request.method in UNSAFE_HTTP_METHODS):
 		frappe.db.commit()
 		rollback = False
 	elif frappe.db:
@@ -414,7 +414,6 @@ def sync_database(rollback: bool) -> bool:
 	# update session
 	if session := getattr(frappe.local, "session_obj", None):
 		if session.update():
-			frappe.db.commit()
 			rollback = False
 
 	return rollback
@@ -513,9 +512,7 @@ def serve(
 def application_with_statics():
 	global application, _sites_path
 
-	application = SharedDataMiddleware(
-		application, {"/assets": str(os.path.join(_sites_path, "assets"))}
-	)
+	application = SharedDataMiddleware(application, {"/assets": str(os.path.join(_sites_path, "assets"))})
 
 	application = StaticDataMiddleware(application, {"/files": str(os.path.abspath(_sites_path))})
 

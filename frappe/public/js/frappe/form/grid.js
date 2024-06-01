@@ -85,29 +85,29 @@ export default class Grid {
 				<div class="small form-clickable-section grid-footer">
 					<div class="flex justify-between">
 						<div class="grid-buttons">
-							<button class="btn btn-xs btn-danger grid-remove-rows hidden"
+							<button type="button" class="btn btn-xs btn-danger grid-remove-rows hidden"
 								data-action="delete_rows">
 								${__("Delete")}
 							</button>
-							<button class="btn btn-xs btn-danger grid-remove-all-rows hidden"
+							<button type="button" class="btn btn-xs btn-danger grid-remove-all-rows hidden"
 								data-action="delete_all_rows">
 								${__("Delete All")}
 							</button>
 							<!-- hack to allow firefox include this in tabs -->
-							<button class="btn btn-xs btn-secondary grid-add-row">
+							<button type="button" class="btn btn-xs btn-secondary grid-add-row">
 								${__("Add Row")}
 							</button>
-							<button class="grid-add-multiple-rows btn btn-xs btn-secondary hidden">
+							<button type="button" class="grid-add-multiple-rows btn btn-xs btn-secondary hidden">
 								${__("Add Multiple")}</a>
 							</button>
 						</div>
 						<div class="grid-pagination">
 						</div>
 						<div class="grid-bulk-actions text-right">
-							<button class="grid-download btn btn-xs btn-secondary hidden">
+							<button type="button" class="grid-download btn btn-xs btn-secondary hidden">
 								${__("Download")}
 							</button>
-							<button class="grid-upload btn btn-xs btn-secondary hidden">
+							<button type="button" class="grid-upload btn btn-xs btn-secondary hidden">
 								${__("Upload")}
 							</button>
 						</div>
@@ -236,7 +236,7 @@ export default class Grid {
 					this.df.data = this.get_data();
 					this.df.data = this.df.data.filter((row) => row.idx != doc.idx);
 				}
-				this.grid_rows_by_docname[doc.name].remove();
+				this.grid_rows_by_docname[doc.name]?.remove();
 				dirty = true;
 			});
 			tasks.push(() => frappe.timeout(0.1));
@@ -795,7 +795,7 @@ export default class Grid {
 	}
 
 	set_value(fieldname, value, doc) {
-		if (this.display_status !== "None" && this.grid_rows_by_docname[doc.name]) {
+		if (this.display_status !== "None" && doc?.name && this.grid_rows_by_docname[doc.name]) {
 			this.grid_rows_by_docname[doc.name].refresh_field(fieldname, value);
 		}
 	}
@@ -834,7 +834,14 @@ export default class Grid {
 				if (!this.df.data) {
 					this.df.data = this.get_data() || [];
 				}
-				this.df.data.push({ idx: this.df.data.length + 1, __islocal: true });
+				const defaults = this.docfields.reduce((acc, d) => {
+					acc[d.fieldname] = d.default;
+					return acc;
+				}, {});
+
+				const row_idx = this.df.data.length + 1;
+				this.df.data.push({ idx: row_idx, __islocal: true, ...defaults });
+				this.df.on_add_row && this.df.on_add_row(row_idx);
 				this.refresh();
 			}
 
@@ -1012,15 +1019,17 @@ export default class Grid {
 
 		let user_settings = frappe.get_user_settings(this.frm.doctype, "GridView");
 		if (user_settings && user_settings[this.doctype] && user_settings[this.doctype].length) {
-			this.user_defined_columns = user_settings[this.doctype].map((row) => {
-				let column = frappe.meta.get_docfield(this.doctype, row.fieldname);
+			this.user_defined_columns = user_settings[this.doctype]
+				.map((row) => {
+					let column = frappe.meta.get_docfield(this.doctype, row.fieldname);
 
-				if (column) {
-					column.in_list_view = 1;
-					column.columns = row.columns;
-					return column;
-				}
-			});
+					if (column) {
+						column.in_list_view = 1;
+						column.columns = row.columns;
+						return column;
+					}
+				})
+				.filter(Boolean);
 		}
 	}
 
@@ -1195,7 +1204,8 @@ export default class Grid {
 		const $wrapper = position === "top" ? this.grid_custom_buttons : this.grid_buttons;
 		let $btn = this.custom_buttons[label];
 		if (!$btn) {
-			$btn = $(`<button class="btn btn-secondary btn-xs btn-custom">${__(label)}</button>`)
+			$btn = $(`<button type="button" class="btn btn-secondary btn-xs btn-custom">`)
+				.html(__(label))
 				.prependTo($wrapper)
 				.on("click", click);
 			this.custom_buttons[label] = $btn;
